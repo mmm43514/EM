@@ -1,0 +1,688 @@
+---
+title: "Aprendiendo de los datos."
+author: "Mario Muñoz Mesa"
+date: "01/14/2022"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    number_sections: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Análisis exploratorio univariante
+Se tiene dataset consitutido por observaciones de 11 variables en 34 estados del mundo. Las variables se encuentran estandarizadas pues están tomadas con unidades de medida muy diferentes. Las variables son:
+
+- Ztlibrop: Número de libros publicados.
+- Ztejerci: Cociente entre el número de individuos en ejército de tierra y población total del
+estado.
+- Ztpobact: Cociente entre población activa y total.
+- Ztenergi: Tasa de consumo energético.
+- Zpservi: Población del sector servicios.
+- Zpagricu: Población del sector agrícola.
+- Ztmedico: Tasa de médicos por habitante.
+- Zespvida: Esperanza de vida.
+- Ztminfan: Tasa de mortalidad infantil.
+- Zpobdens: Densidad de población
+- Zpoburb: Porcentaje de población urbana.
+
+Mostramos los datos:
+```{R}
+library(foreign)
+data <- read.spss("./DB_3.sav", to.data.frame = TRUE)
+data
+```
+Comprobamos que las variables están normalizadas:
+```{R}
+summary(data)
+```
+Mostramos desviación típica de las variables
+```{R}
+print("Desviación típica:")
+sapply(data, sd)
+```
+Desviación típica de la variable ZTLIBROP sin el valor perdido:
+```{R}
+print("Desviación típica:")
+sd(data[,9][-22])
+```
+
+
+
+## Recodificaciones o agrupaciones
+Recodificamos a UTF-8 y aprovechamos para corregir el nombre de algunos paises incompletos y/o con erratas.
+```{R}
+data[1, "PAIS"] <- "áfrica sur"
+data[3, "PAIS"] <- "argentina"
+data[4, "PAIS"] <- "australia"
+data[11, "PAIS"]<- "españa"
+data[14, "PAIS"]<- "hungría"
+data[16, "PAIS"]<- "indonesia"
+data[20, "PAIS"]<- "japón"
+data[22, "PAIS"]<- "marruecos"
+data[23, "PAIS"] <- "méxico"
+data[27, "PAIS"] <- "rd alemania"
+data[28, "PAIS"] <- "reino unido"
+data[29, "PAIS"] <- "rf alemania"
+```
+## Valores perdidos
+Vemos los valores perdidos:
+```{R}
+cbind(apply(is.na(data),2,sum),apply(is.na(data),2,sum)/dim(data)[1])
+```
+vemos un valor perdido en ZTLIBROP. Aprovechamos para guardar una copia del dataset sin variable PAIS que no es de interés. 
+```{R}
+data_ <- data[-1]
+head(data_)
+```
+Los datos perdidos en ZTLIBROP son inferiores al 5\%, sustituiremos por la media:
+```{R}
+not_available<-function(data,na.rm=F){
+  data[is.na(data)]<-mean(data,na.rm=T)
+  data
+}
+
+data_<-as.data.frame(apply(data_, 2, not_available))
+```
+
+## Análisis descriptivo numérico clásico
+Veamos un resumen de las variables:
+
+```{R}
+summary(data_)
+```
+Mostramos boxplot de las variables para visualizar su distribución:
+```{R}
+boxplot (data_, main = "Boxplot de las variables", xlab = "Variables", ylab = "Valores")
+```
+
+Mostramos coef. de asimetría de las variables
+```{R}
+library(moments)
+skewness(data_)
+```
+Mostramos curtosis de las variables
+```{R}
+kurtosis(data_)
+```
+Analizaremos con más detalle:
+```{r,echo=F}
+#Definimos las medidas resistentes
+PMC<-function(x){ return((as.double(quantile(x,0.25))+as.double(quantile(x,0.75)))/2)}
+
+trimedia<-function(x){return((median(x)+PMC(x))/2)}
+
+centrimedia<-function(x){
+  indices<-(x>quantile(x,0.25)&x<quantile(x,0.75))
+  valores<-x[indices]
+  return(sum(valores)/length(valores))
+}
+
+RIQ<-function(x){return(quantile(x,0.75)-quantile(x,0.25))}
+
+MEDA<-function(x){return(median(abs(x-median(x))))}
+
+CVc<-function(x){return((quantile(x,0.75)-quantile(x,0.25))/(quantile(x,0.75)+quantile(x,0.25)))}
+
+H1<-function(x){return((quantile(x,0.25)+quantile(x,0.75)-2*median(x))/(2*median(x)))}
+H2<-function(x){return(median(x)-(quantile(x,0.1)+quantile(x,0.9))/(2))}
+H3<-function(x){return(H2(x)/median(x))}
+
+#Creamos una función que aplique todas estas medidas
+
+descriptivo<-function(x){
+  
+  temp<-rbind(PMC(x),trimedia(x),centrimedia(x))
+  rownames(temp)<-c("PMC","Trimedia","Centrimedia")
+  centralidad<-list(clasica=list(media=mean(x)),resistente=temp)
+  
+  temp<-rbind(RIQ(x),MEDA(x),CVc(x))
+  rownames(temp)<-c("Rango Inter-Cuartílico","MEDA","CVc")
+  dispersion<-list(clasica=list(desviación_típica=sd(x),Coef_varización=sd(x)/mean(x),rango=range(x)),resistente=temp)
+  
+  temp<-rbind(H1(x),H2(x),H3(x))
+  rownames(temp)<-c("Asimetría de Yule","Asimetría de Kelly","Asimetría de Kelly adimensional")
+  forma<-list(clasica=list(skewness=skewness(x),kurtosis=kurtosis(x)),resistente=temp)
+  cat(names(x))
+  return(list(centralidad=centralidad,dispersion=dispersion,forma=forma))
+}
+```
+**ZPOBDENS**
+```{r,echo=F}
+descriptivo(data_[,1])
+hist(col="darkblue",data_[,1],main="Densidad población")
+```
+
+Las medidas resistentes de centralidad están ligeramente hacia la izquierda. MEDA inferior a desviación típica. Observamos asimetría, así como cierta acumulación de datos por el valor de curtosis.
+
+**ZTMINFAN**
+```{r,echo=F}
+descriptivo(data_[,2])
+hist(col="darkblue",data_[,2],main="Tasa de mortalidad infantil")
+```
+
+Observamos cierto desplazamiento a la izquierda en las medidas resistentes de centralidad. Asimetría algo menor que el caso anterior, así como una distribución más aplanada.
+
+**ZESPVIDA**
+```{r,echo=F}
+descriptivo(data_[,3])
+hist(col="darkblue",data_[,3],main="Esperanza de vida")
+```
+
+Observamos distrbución aplanada aunque menos que la anterior, variación en los datos, así como medidas resistentes de centralidad ligeramente desplazadas a la derecha.
+
+**ZPOBURB**
+```{r,echo=F}
+descriptivo(data_[,4])
+hist(col="darkblue",data_[,4],main="Porcentaje población urbana")
+```
+
+Observamos distribución con cierta asimetría, la más aplanada tras la de ZTMINFAN, y prácticamente no hay desplazamiento de centralidad.
+
+**ZTMEDICO**
+```{r,echo=F}
+descriptivo(data_[,5])
+hist(col="darkblue",data_[,5],main="Tasa médicos por habitante")
+```
+
+Se aprecia distribución aplanada, cierta asimetría, así como ligero desplazamiento a la izquierda.
+
+**ZPAGRICU**
+```{r,echo=F}
+descriptivo(data_[,6])
+hist(col="darkblue",data_[,6],main="Población del sector agrícola")
+```
+
+Distribución aplanada, cierta asimetría, así como medidas resistentes de centralidad ligeramente desplazadas a la izquierda.
+
+**ZPSERVI**
+```{r,echo=F}
+descriptivo(data_[,7])
+hist(col="darkblue",data_[,7],main="Población del sector servicios")
+```
+
+Distribución aplanada, prácticamente centrada, y poca asimetría.
+
+**ZTLIBROP**
+```{r,echo=F}
+descriptivo(data_[,8])
+hist(col="darkblue",data_[,8],main="Libros publicados")
+```
+
+Se observa fuerte asimetría hacia la derecha, así como desplazamiento a la derecha y concentración de los datos por el alto valor de curtosis.
+**ZTEJERCI**
+```{r,echo=F}
+descriptivo(data_[,9])
+hist(col="darkblue",data_[,9],main="Individuos ej. tierra / población total")
+```
+
+Observamos muy fuerte asímetría a la derecha, desplazamiento de las medidas resistentes de centralidad a la izquierda, así como alta concentración de los datos por valor muy alto de curtosis.
+**ZTPOBACT**
+```{r,echo=F}
+descriptivo(data_[,10])
+hist(col="darkblue",data_[,10],main="Población activa/ población total")
+```
+
+Distribución aplanada, poca asimetría y prácticamente centrada.
+**ZTENERGI**
+```{r,echo=F}
+descriptivo(data_[,11])
+hist(col="darkblue",data_[,11],main="Tasa consumo eléctrico")
+```
+
+Se observa distribución algo desplazada a la izquierda, concentrada (alto valor de curtosis), y asimétrica a la derecha.
+
+## Valores extremos (outliers)
+Veamos de nuevo boxplot de las variables:
+```{R}
+boxplot (data_, main = "Boxplot de las variables", xlab = "Variables", ylab = "Valores")
+```
+
+En cierta manera todas las variables parecen tener cierta similitud a una normal. Vemos 1 outlier en ZPOBDENS y ZTENERGI, varios en ZTEJERCI. Los sustituiremos por la media.
+
+```{R}
+outlier<-function(data,na.rm=T){
+  H<-1.5*IQR(data)
+  
+  if(any(data<=(quantile(data,0.25,na.rm = T)-H))){
+    data[data<=quantile(data,0.25,na.rm = T)-H]<-NA
+    data[is.na(data)]<-mean(data,na.rm=T)
+    data<-outlier(data)}
+  
+  if(any(data>=(quantile(data,0.75, na.rm = T)+H))){
+    data[data>=quantile(data,0.75, na.rm = T)+H]<-NA
+    data[is.na(data)]<-mean(data,na.rm=T)
+    data<-outlier(data)
+  }
+  return(data)
+}
+
+data_<-apply(data_, 2, outlier)
+```
+
+```{R}
+boxplot(data_, main = "Boxplot de las variables", xlab = "Variables", ylab = "Valores")
+```
+
+Mostramos resumen de los datos tras tratamiento de outliers:
+```{R}
+summary(data_)
+```
+y los datos iniciales:
+```{R}
+summary(data)
+```
+
+## Supuesto de normalidad
+Veamos si estamos tratando con variables normales, para ello utilizamos el método gráfico *qq-plot*.
+
+```{r}
+par(mar=c(1,1,1,1))
+par(mfrow=c(3,5))
+invisible(apply(data_, 2, function(x){
+  qqnorm(x,main=NULL)
+  abline(a=0,b=1,col="red")
+}))
+```
+
+Vemos que las variables que más se acercan a la normalidad son la 4, 6, 7 y 10 (ZPOBURB, ZPAGRICU, ZPSERVI y ZTPOBACT), en menor medida la 1, 2, 3, 5, 8 y 11 (ZPOBDENS, ZTMINFAN, ZESPVIDA, ZTMEDICO, ZTLIBROP y ZTENERGI), la que menos se acerca a normalidad es la 9 (ZTEJERCI).
+
+Normalizamos los datos
+```{r}
+data_norm <- scale(data_)
+```
+
+# Análisis exploratorio multivariante
+Trabajaremos con los datos normalizados:
+```{R}
+datos_pca <- data_norm
+row.names(datos_pca) = data$PAIS
+```
+## Correlación entre variables, test de Barlett
+Mostramos las correlaciones entre variables
+```{r}
+library(corrr)
+datos_pca_correlaciones <- correlate(datos_pca)  #Cálculo de objeto de correlaciones
+rplot(datos_pca_correlaciones, legend = TRUE, colours = c("firebrick1", "black","darkcyan"), print_cor = TRUE) 
+```
+```{r, echo=F}
+library(psych)
+```
+Hacemos test de esfericidad de Bartlett por el que comprobaremos si las correlaciones son significativamente distintas de 0
+```{r}
+
+cortest.bartlett(cor(datos_pca), nrow(datos_pca))
+```
+Observamos un p-valor muy bajo, se rechaza hipótesis nula por lo que los datos no están incorrelados.
+
+Haremos Análisis de Componentes Principales, los datos ya los hemos preparado para ello.
+
+```{R}
+PCA<-prcomp(datos_pca)
+```
+Mostramos los coeficientes de las componentes principales, esto es, el peso de cada variable en la correspondiente componente principal:
+```{R}
+PCA$rotation
+```
+Mostramos las desviaciones típicas de cada componente principal, proporción de varianza explicada y acumulada:
+```{R}
+PCA$sdev
+summary(PCA)
+```
+Mostramos gráficamente la varianza explicada
+```{R, echo=F}
+library(ggplot2)
+```
+
+```{R}
+varianza_explicada <- PCA$sdev^2 / sum(PCA$sdev^2)
+ggplot(data = data.frame(varianza_explicada, pc = 1:11),
+       aes(x = pc, y = varianza_explicada, fill=varianza_explicada )) +
+  geom_col(width = 0.3) +
+  scale_y_continuous(limits = c(0,0.6)) + theme_bw() +
+  labs(x = "Componente principal", y= " Proporción de varianza explicada")
+```
+Y la varianza acumulada
+```{R}
+varianza_acum<-cumsum(varianza_explicada)
+ggplot( data = data.frame(varianza_acum, pc = 1:11),
+        aes(x = pc, y = varianza_acum ,fill=varianza_acum )) +
+  geom_col(width = 0.5) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme_bw() +
+  labs(x = "Componentes principales",
+       y = "Proporción varianza acumulada")
+```
+
+## Reducción de dimensión mediante variables observables
+
+Para la selección de componentes principales utilizaremos la regla de Abdi et al. (2010). Promediamos las varianzas explicadas por la componentes principales:
+```{R}
+PCA$sdev^2
+```
+Calculamos la media:
+```{R}
+mean(PCA$sdev^2)
+```
+Y no quedamos con las tres primeras componentes principales pues tienen varianza explicada superior a 1, que es la media.
+
+
+
+Visualizaremos ahora la contribución de las componentes principales.
+
+Veamos una comparativa entre la primera y segunda componente principal analizando 
+que variables tienen más peso para la definición de cada componente principal
+```{r}
+library("factoextra")
+fviz_pca_var(PCA,
+             repel=TRUE,col.var="cos2",
+             legend.title="Distancia")+theme_bw()
+```
+
+Ahora comparativa entre la primera y tercera componente principal analizando 
+que variables tienen más peso para la definición de cada componente principal
+```{r}
+fviz_pca_var(PCA,axes=c(1,3),
+             repel=TRUE,col.var="cos2",
+             legend.title="Distancia")+theme_bw()
+```
+
+Comparativa entre la segunda y tercera componente principal analizando 
+que variables tienen más peso para la definición de cada componente principal
+```{r}
+fviz_pca_var(PCA,axes=c(2,3),
+             repel=TRUE,col.var="cos2",
+             legend.title="Distancia")+theme_bw()
+```
+
+
+Representaremos las observaciones de los objetos junto con las componentes principales, identificando con colores las observaciones que mayor varianza explican de las componentes principales.
+ 
+Observaciones en la primera y segunda componente principal
+
+```{r}
+fviz_pca_ind(PCA,col.ind = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel=TRUE,legend.title="Contrib.var")+theme_bw()
+```
+
+Observaciones en la primera y tercera componente principal
+```{r}
+fviz_pca_ind(PCA,axes=c(1,3),col.ind = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel=TRUE,legend.title="Contrib.var")+theme_bw()
+```
+
+Observaciones en la segunda y tercera componente principal
+```{r}
+fviz_pca_ind(PCA,axes=c(2,3),col.ind = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel=TRUE,legend.title="Contrib.var")+theme_bw()
+```
+
+
+Veremos ahora representaciones conjuntas de individuos y variables, en las que se muestran las contribuciones de los individuos a las componentes principales y el peso de cada variable en las componentes principales. 
+
+Variables y observaciones en la primera y segunda componente principal
+```{r}
+fviz_pca(PCA,
+         alpha.ind ="contrib", col.var = "cos2",col.ind="seagreen",
+         gradient.cols = c("#FDF50E", "#FD960E", "#FD1E0E"),
+         repel=TRUE,
+         legend.title="Distancia")+theme_bw()
+```
+
+Variables y observaciones en la primera y tercera componente principal
+```{r}
+fviz_pca(PCA,axes=c(1,3),
+         alpha.ind ="contrib", col.var = "cos2",col.ind="seagreen",
+         gradient.cols = c("#FDF50E", "#FD960E", "#FD1E0E"),
+         repel=TRUE,
+         legend.title="Distancia")+theme_bw()
+```
+
+Variables y observaciones en la segunda y tercera componente principal
+```{r}
+fviz_pca(PCA,axes=c(2,3),
+         alpha.ind ="contrib", col.var = "cos2",col.ind="seagreen",
+         gradient.cols = c("#FDF50E", "#FD960E", "#FD1E0E"),
+         repel=TRUE,
+         legend.title="Distancia")+theme_bw()
+
+```
+
+Mostramos las coordenadas de los datos originales tipificados en el nuevo sistema de referencia.
+
+```{r}
+PCA$x
+```
+## Reducción de dimensión mediante variables latentes
+
+Como comprobamos anteriormente las correlaciones son significativamente distintas de 0, por lo que tiene sentido el Análisis Factorial.
+
+Podemos visualizar las correlaciones:
+
+```{r, echo=F}
+library("polycor")
+library("ggcorrplot")
+```
+
+```{R}
+data_fa <- data_norm
+poly_cor <- hetcor(data_fa)$correlations
+ggcorrplot(poly_cor, type = "lower", hc.order = T)
+```
+
+Ahora, compararemos las salidas de modelos de 3 factores con el método del factor principal y con el de máxima verosimilitud.
+
+```{R}
+modelo1<-fa(poly_cor,
+            nfactors = 3,
+            rotate = "none",
+            fm="mle") # modelo máxima verosimilitud
+```
+
+```{R}
+modelo2<-fa(poly_cor,
+            nfactors = 3,
+            rotate = "none",
+            fm="pa") # modelo factor principal
+```
+
+Ante la advertencia decidimos probar el método de mínimo residuo
+
+```{R}
+modelo2<-fa(poly_cor,
+            nfactors = 3,
+            rotate = "none",
+            fm="minres") # modelo mínimo residuo
+```
+
+Finalmente probamos otro método de mínimo residuo
+```{R}
+modelo2<-fa(poly_cor,
+            nfactors = 3,
+            rotate = "none",
+            fm="old.min") # modelo mínimo residuo
+```
+
+Comparamos las comunalidades:
+
+```{R}
+sort(modelo1$communality,decreasing = T)->c1
+sort(modelo2$communality,decreasing = T)->c2
+head(cbind(c1,c2))
+```
+
+Comparamos las unicidades, es decir, la proporción de varianza que no ha sido explicada por el factor (1-comunalidad):
+
+```{R}
+sort(modelo1$uniquenesses,decreasing = T)->u1
+sort(modelo2$uniquenesses,decreasing = T)->u2
+head(cbind(u1,u2))
+```
+
+Determinaremos el número óptimo de factores por método Scree plot (Cattel 1966) y Análisis Paralelo (Horn 1965):
+
+```{R}
+scree(poly_cor)
+fa.parallel(poly_cor, n.obs = nrow(data_fa), fa = "fa", fm = "mle")
+```
+
+El número óptimo de factores es 2.
+
+Estimamos el modelo factorial con 2 factores implementando una rotación tipo varimax para buscar una interpretación más simple.
+
+```{R}
+modelo_varimax<-fa(poly_cor,nfactors = 2,rotate = "varimax", fa="mle")
+```
+
+Mostramos la matriz de pesos factorial rotada
+
+```{R}
+print(modelo_varimax$loadings,cut=0) 
+```
+Veamos una representación más interpretable
+```{R}
+fa.diagram(modelo_varimax)
+```
+
+Vemos que el primer factor está asociado con ZPAGRICU, ZPOBURB,ZPSERVI, ZESPVIDA, ZTMINFAN, ZTLIBROP, ZTMEDICO y ZTENERGI, mientras que el segundo factor está asociado con ZTPOBACT.
+
+Veamos con el test de hipótesis que contrasta si el número de factores es suficiente.
+
+```{R, echo=F}
+library(stats)
+```
+```{r}
+factanal(data_fa,factors=2, rotation="none")
+```
+
+Vemos p valor muy bajo, se rechaza la hipótesis nula, 2 no son suficientes.
+
+Estimamos el modelo factorial con 3 factores 
+
+
+Veamos una representación más interpretable
+```{R}
+modelo_varimax<-fa(poly_cor,nfactors = 3,rotate = "varimax", fa="mle")
+fa.diagram(modelo_varimax)
+```
+
+Vemos que el primer factor está asociado con ZPAGRICU, ZPOBURB,ZPSERVI, ZESPVIDA, ZTMINFAN, ZTLIBROP y ZTMEDICO, mientras que el segundo factor está asociado con ZTPOBACT y ZTENERGI, el tercero con ZTEJERCI.
+
+Veamos con el test de hipótesis que contrasta si el número de factores es suficiente.
+
+```{R, echo=F}
+library(stats)
+```
+```{r}
+factanal(data_fa,factors=3, rotation="none")
+```
+
+No se rechaza la hipótesis nula de que sean suficientes.
+
+## Análisis de la normalidad multivariante
+
+Utilizaremos funciones del paquete MVN para contrastar la normalidad multivariante. Veamos si tenemos outliers:
+
+```{r}
+library(MVN)
+outliers <- mvn(data = datos_pca  , mvnTest = "hz", multivariateOutlierMethod = "quan")
+```
+
+Se detectan 11 outliers en las observaciones. Veamos tests de Royston y Henze-Zirkler: 
+
+```{r}
+
+royston_test <- mvn(data = datos_pca , mvnTest = "royston", multivariatePlot = "qq")
+
+royston_test$multivariateNormality
+
+hz_test <- mvn(data = datos_pca , mvnTest = "hz")
+hz_test$multivariateNormality
+
+```
+El test de Royston nos indica rechazar la hip. nula, no tendríamos normalidad multivariante. El test de Henze-Zirkler no nos sugiere rechzar la hip. nula de normalidad multivariante, aunque da p-valor bajo.
+
+
+## Clustering
+```{r}
+# install.packages("tidyverse")
+# install.packages("cluster")
+# install.packages("factoextra")
+# Cargamos los paquetes indicados
+library(tidyverse)
+library(cluster)
+library(factoextra)
+```
+
+```{r}
+data_clust <- datos_pca
+```
+
+Matriz de distancias:
+
+```{r}
+distance<- get_dist(data_clust)
+fviz_dist(distance, gradient = list(low ="#00AFBB", mid = "white", high = "#FC4E07"))
+```
+
+Aplicamos clustering con K-Medias:
+
+```{r}
+k2 <- kmeans(data_clust, centers = 2, nstart = 25)
+k3 <- kmeans(data_clust, centers = 3, nstart = 25)
+k4 <- kmeans(data_clust, centers = 4, nstart = 25)
+k5 <- kmeans(data_clust, centers = 5, nstart = 25)
+k6 <- kmeans(data_clust, centers = 6, nstart = 25)
+
+# plots to compare
+p1 <- fviz_cluster(k2, geom = "point", data = data_clust) + ggtitle("k = 2")
+p2 <- fviz_cluster(k3, geom = "point", data = data_clust) + ggtitle("k = 3")
+p3 <- fviz_cluster(k4, geom = "point", data = data_clust) + ggtitle("k = 4")
+p4 <- fviz_cluster(k5, geom = "point", data = data_clust) + ggtitle("k = 5")
+p5 <- fviz_cluster(k6, geom = "point", data = data_clust) + ggtitle("k = 6")
+library(gridExtra)
+grid.arrange(p1, p2, p3, p4, p5, nrow = 2)
+```
+
+Buscando el número óptimo de clusters:
+
+```{r}
+set.seed(123)
+fviz_nbclust(data_clust, kmeans, method = "wss")
+```
+Método de Silhouette
+```{r}
+fviz_nbclust(data_clust, kmeans, method = "silhouette")
+```
+
+Método estadístico de brecha (GAP)
+```{r}
+gap_stat <- clusGap(data_clust, FUN = kmeans, nstart = 25, K.max = 10, B = 50)
+fviz_gap_stat(gap_stat)
+```
+
+Dos de los métodos sugieren que K=2 es el número de clusters más adecuado.
+
+```{r}
+set.seed(123)
+final <- kmeans(data_clust, 2, nstart = 25)
+print(final)
+
+# Visualizamos los resultados
+fviz_cluster(final, data = data_clust)
+```
+
+Finalmente, mostramos medias de las variables a nivel de cluster.
+
+```{r}
+as.data.frame(data_clust) %>%
+  mutate(Cluster = final$cluster) %>%
+  group_by(Cluster) %>%
+  summarise_all("mean")
+```
